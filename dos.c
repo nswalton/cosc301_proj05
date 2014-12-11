@@ -108,7 +108,7 @@ struct bpb33* check_bootsector(uint8_t *image_buf)
 	fprintf(stderr, "Found good jump instruction in boot sector\n");
 #endif
     } 
-    else 
+    else
     {
 	fprintf(stderr, "illegal boot sector jump inst: %x%x%x\n", 
 		bootsect->bsJump[0], bootsect->bsJump[1], 
