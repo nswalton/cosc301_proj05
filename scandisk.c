@@ -14,13 +14,21 @@
 #include "fat.h"
 #include "dos.h"
 
+int orphans[sizeof(int)*4000];			/* We know global variables are generally bad, but orphans are 
+						 * children of the world, so it seemed fitting */
+
+void set_nil(int *num_array, uint16_t max) {
+    for (int i = 2; i <= max; i++) {
+	num_array[i] = 0;
+    }
+}
 
 void usage(char *progname) {
     fprintf(stderr, "usage: %s <imagename>\n", progname);
     exit(1);
 }
 
-int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb)	//Returns the number of clusters linked for file
+int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb)	//Returns the number of clusters linked for a file
 {
     uint16_t cluster = getushort(dirent->deStartCluster);
     uint32_t bytes_remaining = getulong(dirent->deFileSize);
@@ -39,7 +47,6 @@ int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bp
 }
 
 void shorten_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb, int maxlen) {
-
     uint16_t cluster = getushort(dirent->deStartCluster);
     uint32_t bytes_remaining = getulong(dirent->deFileSize);
     uint16_t cluster_size = bpb->bpbBytesPerSec * bpb->bpbSecPerClust;
@@ -60,7 +67,6 @@ void shorten_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 
 	    //set cluster to FREE
 	    set_fat_entry(tempcluster, CLUST_FREE, image_buf, bpb);
 	}
-
 	cluster_in_chain++;
     }
 }
@@ -82,6 +88,22 @@ void fix_size(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb) {
     else {
 	printf("The size in the metadata for file %s is larger than it should be!\n", dirent -> deName);
 	putulong(dirent -> deFileSize, cluster_size);
+    }
+}
+
+void count_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb) {
+    uint16_t cluster = getushort(dirent->deStartCluster);
+    uint32_t bytes_remaining = getulong(dirent->deFileSize);
+    uint16_t cluster_size = bpb->bpbBytesPerSec * bpb->bpbSecPerClust;
+    
+    orphans[cluster] = 1;
+    while (is_valid_cluster(cluster, bpb)) {
+
+	//printf("cluster is: %d\n", cluster);
+        uint32_t nbytes = bytes_remaining > cluster_size ? cluster_size : bytes_remaining;
+        bytes_remaining -= nbytes;
+        cluster = get_fat_entry(cluster, image_buf, bpb);
+	orphans[cluster] = 1;
     }
 }
 
@@ -163,6 +185,7 @@ uint16_t next_dirent(struct direntry *dirent, uint8_t *image_buf, struct bpb33* 
     }
 
     fix_size(dirent, image_buf, bpb);
+    count_clusters(dirent, image_buf, bpb);
 
     return followclust;
 }
@@ -182,7 +205,7 @@ void follow_dir(uint16_t cluster, uint8_t *image_buf, struct bpb33* bpb) {
                 follow_dir(followclust, image_buf, bpb);
             dirent++;
 	}
-
+	orphans[cluster] = 1;
 	cluster = get_fat_entry(cluster, image_buf, bpb);
     }
 }
@@ -204,27 +227,45 @@ void traverse_root(uint8_t *image_buf, struct bpb33* bpb)
     }
 }
 
-void print_free(uint8_t *image_buf, struct bpb33* bpb) {
+void find_free(uint8_t *image_buf, struct bpb33* bpb) {
     
     uint16_t max_cluster = (bpb->bpbSectors / bpb->bpbSecPerClust) & FAT12_MASK;
     uint16_t cluster;
     int orphan_clusters[sizeof(int)*max_cluster];
-    for (int i = 2; i < max_cluster; i++) {
-	printf("Int at %d is %d\n", i, orphan_clusters[i]); 
-    }
-
-    for (int i = 2; i < max_cluster; i++) {
+    for (int i = 2; i <= max_cluster; i++) {
 	cluster = get_fat_entry(i, image_buf, bpb);
 	if (cluster == (FAT12_MASK & CLUST_FREE)) {
-	//if (cluster == CLUST_FREE) {
-	    //printf("Cluster %d is free!\n", i);
-	}
-	else {
-	    //printf("Cluster %d is not free!\n", i);
+	    orphans[i] = 1;
 	}
     }
 }
 
+void print_orphans(uint16_t max) {
+    for (int i = 2; i <= max; i++) {
+	if (orphans[i] == 0) {
+	    printf("Cluster %d is an orphan, laugh at it for not having parents. HAHA!\n", i);
+	}
+    }
+}
+
+void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
+    uint16_t cluster;
+    int orphan_clones[sizeof(int)*4000];
+    for (int i = 2; i <= max; i++) {					//Copy orphans to orphan clones
+	orphan_clones[i] = orphans[i];
+    }
+    for (int i = 2; i <= max; i++) {					//If another orphan points to an orphan, set the latter to 1
+	if (orphans[i] == 0) {
+	    cluster = get_fat_entry(i, image_buf, bpb);
+	    orphan_clones[cluster] = 1;
+	}
+    }
+    for (int i = 2; i <= max; i++) {					//All entries with a 0 are starting cluster of orphan chain
+	if (orphan_clones[i] == 0) {
+	    printf("All hail cluster %d, king of the orphans\n", i);
+	}
+    }
+}
 
 int main(int argc, char** argv) {
     uint8_t *image_buf;
@@ -236,13 +277,16 @@ int main(int argc, char** argv) {
 
     image_buf = mmap_file(argv[1], &fd);
     bpb = check_bootsector(image_buf);
-
+    uint16_t max_cluster = (bpb->bpbSectors / bpb->bpbSecPerClust) & FAT12_MASK;
+    set_nil(orphans, max_cluster);
 
     // your code should start here...
 
     traverse_root(image_buf, bpb);
 
-    print_free(image_buf, bpb);
+    find_free(image_buf, bpb);
+    print_orphans(max_cluster);
+    find_orphan_leaders(image_buf, bpb, max_cluster);
 
     unmmap_file(image_buf, &fd);
     return 0;
