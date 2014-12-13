@@ -44,13 +44,8 @@ void shorten_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 
     uint16_t cluster = getushort(dirent->deStartCluster);
     int cluster_in_chain = 1;
     while (is_valid_cluster(cluster, bpb)) {
-<<<<<<< HEAD
-        uint16_t tempcluster = cluster;
-        uint32_t nbytes = bytes_remaining > cluster_size ? cluster_size : bytes_remaining;
-        bytes_remaining -= nbytes;
-=======
+
 	uint16_t tempcluster = cluster;
->>>>>>> 261ee3dd9e72108ff29555298bed5e71fa29d58e
         cluster = get_fat_entry(cluster, image_buf, bpb);
 
         if (cluster_in_chain == maxlen) {
@@ -353,9 +348,21 @@ void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
     for (int i = 2; i <= max; i++) {					//All entries with a 0 are starting cluster of orphan chain
         if (orphan_clones[i] == 0) {
             printf("All hail cluster %d, king of the orphans\n", i);
+
+	    int count = 0;
+	    uint16_t clust = i;
+    	    while (is_valid_cluster(clust, bpb)) {
+    	        clust = get_fat_entry(clust, image_buf, bpb);
+    	        count++;
+		printf("%d\n", count);
+    	    }
+	    uint32_t size = 512*count;
+	    char *filename;
+	    
+
             /*struct direntry *new_dirent = (struct direntry*)cluster_to_addr((uint16_t) i, image_buf, bpb);*/
             /*struct direntry *new_dirent = (void*)1;*/
-            /*create_dirent(root_dir, "found" ++ i ++ ".dat", (uint16_t) i, size, imagebuf, bpb);*/
+            /*create_dirent(new_dirent, filename, (uint16_t) i, size, imagebuf, bpb);*/
         }
     }
 }
