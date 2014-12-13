@@ -31,15 +31,9 @@ void usage(char *progname) {
 int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb)	//Returns the number of clusters linked for a file
 {
     uint16_t cluster = getushort(dirent->deStartCluster);
-    uint32_t bytes_remaining = getulong(dirent->deFileSize);
-    uint16_t cluster_size = bpb->bpbBytesPerSec * bpb->bpbSecPerClust;
     int count = 0;
 
-
     while (is_valid_cluster(cluster, bpb)) {
-
-        uint32_t nbytes = bytes_remaining > cluster_size ? cluster_size : bytes_remaining;
-        bytes_remaining -= nbytes;
         cluster = get_fat_entry(cluster, image_buf, bpb);
 	count++;
     }
@@ -48,14 +42,9 @@ int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bp
 
 void shorten_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb, int maxlen) {
     uint16_t cluster = getushort(dirent->deStartCluster);
-    uint32_t bytes_remaining = getulong(dirent->deFileSize);
-    uint16_t cluster_size = bpb->bpbBytesPerSec * bpb->bpbSecPerClust;
-
     int cluster_in_chain = 1;
     while (is_valid_cluster(cluster, bpb)) {
 	uint16_t tempcluster = cluster;
-        uint32_t nbytes = bytes_remaining > cluster_size ? cluster_size : bytes_remaining;
-        bytes_remaining -= nbytes;
         cluster = get_fat_entry(cluster, image_buf, bpb);
 
 	if (cluster_in_chain == maxlen) {
