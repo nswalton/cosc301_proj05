@@ -353,7 +353,7 @@ void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
         if (orphan_clones[i] == 0) {
             printf("All hail cluster %d, king of the orphans\n", i);
 
-<<<<<<< HEAD
+
 	    found_num++;
 	    int count = 0;
 	    uint16_t clust = i;
@@ -375,29 +375,6 @@ void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
             struct direntry *new_dirent = (struct direntry*)cluster_to_addr(0, image_buf, bpb);
 
             create_dirent(new_dirent, filename, (uint16_t) i, size, image_buf, bpb);
-=======
-            int count = 0;
-            uint16_t clust = i;
-
-            while (is_valid_cluster(clust, bpb)) {
-                clust = get_fat_entry(clust, image_buf, bpb);
-                count++;
-            }
-
-
-            uint32_t size = 512*count;
-            printf("size is: %d\n", size);
-
-            char cluster_num[2046*sizeof(char)];
-            sprintf(cluster_num, "%d", i);
-            char *filename = malloc(sizeof(char)*14);
-            strcat(filename, "found");
-            strcat(filename, cluster_num);
-            strcat(filename, ".dat");
-
-            printf("File name is: %s\n", filename);
-            free(filename);
->>>>>>> 29ed511a8dacf92b91f6efcca8fe39dbb3e0c99f
 
 	    free(filename);
         }
