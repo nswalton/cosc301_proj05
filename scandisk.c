@@ -15,7 +15,7 @@
 #include "dos.h"
 
 int orphans[sizeof(int)*4000];			/* We know global variables are generally bad, but orphans are
-                                         * children of the world, so it seemed fitting */
+                                         	 * children of the world, so it seemed fitting */
 
 void set_nil(int *num_array, uint16_t max) {
     for (int i = 2; i <= max; i++) {
@@ -28,7 +28,8 @@ void usage(char *progname) {
     exit(1);
 }
 
-int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb)	//Returns the number of clusters linked for a file
+//Returns the number of clusters linked for a file
+int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb)
 {
     uint16_t cluster = getushort(dirent->deStartCluster);
     int count = 0;
@@ -40,6 +41,7 @@ int cluster_length(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bp
     return count;
 }
 
+//Remove clusters in chain that are inconsistent with metadata
 void shorten_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb, int maxlen) {
     uint16_t cluster = getushort(dirent->deStartCluster);
     int cluster_in_chain = 1;
@@ -61,6 +63,7 @@ void shorten_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 
     }
 }
 
+//Make metadata consistent with actual cluster chain length
 void fix_size(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb) {
 
     uint32_t meta_size;
@@ -69,7 +72,6 @@ void fix_size(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb) {
     int cluster_size = count*512;
     if (meta_size <= (cluster_size) && meta_size >= (cluster_size - 512)) {
         //Do nothing, file size is consistent
-        //printf("Clust size for %s is: %d     meta size is: %d\n", dirent -> deName, cluster_size, meta_size);
     }
     else if (meta_size < (cluster_size - 512)) {
         printf("Too many clusters for file %s!\n", dirent -> deName);
@@ -81,17 +83,12 @@ void fix_size(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb) {
     }
 }
 
+//Count the length of the chain of clusters
 void count_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb) {
+    
     uint16_t cluster = getushort(dirent->deStartCluster);
-    uint32_t bytes_remaining = getulong(dirent->deFileSize);
-    uint16_t cluster_size = bpb->bpbBytesPerSec * bpb->bpbSecPerClust;
-
     orphans[cluster] = 1;
     while (is_valid_cluster(cluster, bpb)) {
-
-        //printf("cluster is: %d\n", cluster);
-        uint32_t nbytes = bytes_remaining > cluster_size ? cluster_size : bytes_remaining;
-        bytes_remaining -= nbytes;
         cluster = get_fat_entry(cluster, image_buf, bpb);
         orphans[cluster] = 1;
     }
@@ -203,7 +200,6 @@ void follow_dir(uint16_t cluster, uint8_t *image_buf, struct bpb33* bpb) {
 void traverse_root(uint8_t *image_buf, struct bpb33* bpb)
 {
     uint16_t cluster = 0;
-
     struct direntry *dirent = (struct direntry*)cluster_to_addr(cluster, image_buf, bpb);
 
     int i = 0;
@@ -217,17 +213,18 @@ void traverse_root(uint8_t *image_buf, struct bpb33* bpb)
     }
 }
 
+//Set flags in orphans array to false if the cluster is free. Find and fix bad clusters as well.
 void find_free(uint8_t *image_buf, struct bpb33* bpb) {
 
     uint16_t max_cluster = (bpb->bpbSectors / bpb->bpbSecPerClust) & FAT12_MASK;
     uint16_t cluster;
     int orphan_clusters[sizeof(int)*max_cluster];
-    for (int i = 2; i <= max_cluster; i++) {
+    for (int i = 2; i <= max_cluster; i++) {			//loop through all cluster indices
         cluster = get_fat_entry(i, image_buf, bpb);
-        if (cluster == (FAT12_MASK & CLUST_FREE)) {
+        if (cluster == (FAT12_MASK & CLUST_FREE)) {		//free clusters are not orphans
             orphans[i] = 1;
         }
-	if (cluster == (FAT12_MASK & CLUST_BAD)) {
+	if (cluster == (FAT12_MASK & CLUST_BAD)) {		//find bad clusters and handle them
 	    printf("CLUSTER %d is BAD!!!\n", i);
 	}
     }
@@ -327,7 +324,7 @@ void create_dirent(struct direntry *dirent, char *filename,
     }
 }
 
-
+//Print the cluster number for all orphan clusters
 void print_orphans(uint16_t max) {
     for (int i = 2; i <= max; i++) {
         if (orphans[i] == 0) {
@@ -336,6 +333,7 @@ void print_orphans(uint16_t max) {
     }
 }
 
+//print the starting cluster number for each orphan chain and then create a dirent for the orphan chain
 void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
     uint16_t cluster;
     int orphan_clones[sizeof(int)*4000];
@@ -354,7 +352,7 @@ void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
             printf("All hail cluster %d, king of the orphans\n", i);
 
 
-	    found_num++;
+	    found_num++;						//Number of the added dirent
 	    int count = 0;
 	    uint16_t clust = i;
     	    while (is_valid_cluster(clust, bpb)) {
@@ -362,15 +360,13 @@ void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
     	        count++;
     	    }
 	    uint32_t size = 512*count;
-	    printf("size is: %d\n", size);
 
-	    char cluster_num[sizeof(char)*14];
+	    char cluster_num[sizeof(char)*14];				//Create filename for new dirent
 	    sprintf(cluster_num, "%d", found_num);
 	    char *filename = malloc(sizeof(char)*14);
 	    strcat(filename, "/FOUND");
 	    strcat(filename, cluster_num);
 	    strcat(filename, ".DAT");
-	    //printf("File name is: %s\n", filename);
 
             struct direntry *new_dirent = (struct direntry*)cluster_to_addr(0, image_buf, bpb);
 
