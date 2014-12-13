@@ -85,7 +85,7 @@ void fix_size(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb) {
 
 //Count the length of the chain of clusters
 void count_clusters(struct direntry *dirent, uint8_t *image_buf, struct bpb33 *bpb) {
-    
+
     uint16_t cluster = getushort(dirent->deStartCluster);
     orphans[cluster] = 1;
     while (is_valid_cluster(cluster, bpb)) {
@@ -216,6 +216,8 @@ void traverse_root(uint8_t *image_buf, struct bpb33* bpb)
 //Set flags in orphans array to false if the cluster is free. Find and fix bad clusters as well.
 void find_free(uint8_t *image_buf, struct bpb33* bpb) {
 
+    int bad_clusters[sizeof(int)*4000];
+    set_nil(bad_clusters, 4000);
     uint16_t max_cluster = (bpb->bpbSectors / bpb->bpbSecPerClust) & FAT12_MASK;
     uint16_t cluster;
     int orphan_clusters[sizeof(int)*max_cluster];
@@ -224,9 +226,19 @@ void find_free(uint8_t *image_buf, struct bpb33* bpb) {
         if (cluster == (FAT12_MASK & CLUST_FREE)) {		//free clusters are not orphans
             orphans[i] = 1;
         }
-	if (cluster == (FAT12_MASK & CLUST_BAD)) {		//find bad clusters and handle them
-	    printf("CLUSTER %d is BAD!!!\n", i);
-	}
+        if (cluster == (FAT12_MASK & CLUST_BAD)) {		//find bad clusters and handle them
+            printf("CLUSTER %d is BAD!!!\n", i);
+            bad_clusters[cluster] = 1;
+            set_fat_entry(i, CLUST_FREE, image_buf, bpb);
+        }
+    }
+
+    for (int i = 2; i <= max_cluster; i++) {
+        cluster = get_fat_entry(i, image_buf, bpb);
+        if (bad_clusters[cluster] == 1) {
+            set_fat_entry(i, CLUST_EOFS, image_buf, bpb);
+            /*set_fat_entry(cluster, CLUST_EOFS, image_buf, bpb);*/
+        }
     }
 }
 
