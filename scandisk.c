@@ -176,7 +176,7 @@ uint16_t next_dirent(struct direntry *dirent, uint8_t *image_buf, struct bpb33* 
 
     fix_size(dirent, image_buf, bpb);
     count_clusters(dirent, image_buf, bpb);
-
+    printf("File name is: %s\n", dirent -> deName);
     return followclust;
 }
 
@@ -227,6 +227,9 @@ void find_free(uint8_t *image_buf, struct bpb33* bpb) {
         if (cluster == (FAT12_MASK & CLUST_FREE)) {
             orphans[i] = 1;
         }
+	if (cluster == (FAT12_MASK & CLUST_BAD)) {
+	    printf("CLUSTER %d is BAD!!!\n", i);
+	}
     }
 }
 
@@ -345,24 +348,34 @@ void find_orphan_leaders(uint8_t *image_buf, struct bpb33* bpb, int max) {
             orphan_clones[cluster] = 1;
         }
     }
+    int found_num = 0;
     for (int i = 2; i <= max; i++) {					//All entries with a 0 are starting cluster of orphan chain
         if (orphan_clones[i] == 0) {
             printf("All hail cluster %d, king of the orphans\n", i);
 
+	    found_num++;
 	    int count = 0;
 	    uint16_t clust = i;
     	    while (is_valid_cluster(clust, bpb)) {
     	        clust = get_fat_entry(clust, image_buf, bpb);
     	        count++;
-		printf("%d\n", count);
     	    }
 	    uint32_t size = 512*count;
-	    char *filename;
-	    
+	    printf("size is: %d\n", size);
 
-            /*struct direntry *new_dirent = (struct direntry*)cluster_to_addr((uint16_t) i, image_buf, bpb);*/
-            /*struct direntry *new_dirent = (void*)1;*/
-            /*create_dirent(new_dirent, filename, (uint16_t) i, size, imagebuf, bpb);*/
+	    char cluster_num[sizeof(char)*14];
+	    sprintf(cluster_num, "%d", found_num);
+	    char *filename = malloc(sizeof(char)*14);
+	    strcat(filename, "/FOUND");
+	    strcat(filename, cluster_num);
+	    strcat(filename, ".DAT");
+	    //printf("File name is: %s\n", filename);
+
+            struct direntry *new_dirent = (struct direntry*)cluster_to_addr(0, image_buf, bpb);
+
+            create_dirent(new_dirent, filename, (uint16_t) i, size, image_buf, bpb);
+
+	    free(filename);
         }
     }
 }
